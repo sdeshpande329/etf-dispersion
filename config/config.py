@@ -18,10 +18,22 @@ class Config:
     HOLDINGS_DIR = "data/holdings"
 
     HOLDINGS_FILES = {
-        "SPY": "spy_holdings.csv",
-        "XLK": "xlk_holdings.csv",
-        "XBI": "xbi_holdings.csv",
-    }
+    "SPY": [
+        "spy_holdings_2022.csv",
+        "spy_holdings_2023.csv",
+        "spy_holdings_2024.csv",
+    ],
+    "XLK": [
+        "xlk_holdings_2022.csv",
+        "xlk_holdings_2023.csv",
+        "xlk_holdings_2024.csv",
+    ],
+    "XBI": [
+        "xbi_holdings_2022.csv",
+        "xbi_holdings_2023.csv",
+        "xbi_holdings_2024.csv",
+    ],
+}
 
     START_DATE = "2022-01-01"
     END_DATE = "2024-12-31"
@@ -57,6 +69,11 @@ class Config:
     def get_wrds_username(cls, credentials_path: str = "config/credentials.yaml") -> str:
         credentials = cls.load_credentials(credentials_path)
         return credentials["wrds"]["username"]
+
+    @classmethod
+    def get_sec_api_key(cls, credentials_path: str = "config/credentials.yaml") -> str:
+        credentials = cls.load_credentials(credentials_path)
+        return credentials["sec"]["key"]
 
     @classmethod
     def etf_secids(cls) -> list:

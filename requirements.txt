@@ -5,3 +5,6 @@ seaborn
 PyYaml
 wrds
 scipy
+requests
+lxml
+sec-api
