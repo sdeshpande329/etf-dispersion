@@ -4,9 +4,9 @@ from pathlib import Path
 
 class Config:
     ETF_UNIVERSE = [
-        (136639, "SPY", 1),
-        (101740, "XLK", 2),
-        (149751, "XBI", 3),
+        (109820, "SPY", 1),
+        (110014, "XLK", 2),
+        (125559, "XBI", 3),
     ]
 
     CONSTITUENT_CAPS = {
