@@ -263,9 +263,10 @@ def _prepare_returns_matrix(returns_df: pd.DataFrame, mapping_df: pd.DataFrame) 
     return returns_df.pivot_table(index='date', columns='ticker', values='ret', aggfunc='first').sort_index()
 
 
-def _prepare_constituent_iv(iv_df: pd.DataFrame, mapping_df: pd.DataFrame) -> pd.DataFrame:
+def _prepare_constituent_iv(iv_df: pd.DataFrame, mapping_df: pd.DataFrame, spot_prices: Optional[pd.DataFrame] = None) -> pd.DataFrame:
     """
     Normalize constituent IV data to include ticker labels.
+    Optionally compute log_moneyness from spot prices.
     """
     iv_df = iv_df.copy()
     iv_df.columns = [col.strip().lower() for col in iv_df.columns]
@@ -285,7 +286,28 @@ def _prepare_constituent_iv(iv_df: pd.DataFrame, mapping_df: pd.DataFrame) -> pd
         )
 
     iv_df['ticker'] = iv_df['ticker'].astype(str).str.strip().str.upper()
-    return iv_df.dropna(subset=['ticker'])
+    iv_df = iv_df.dropna(subset=['ticker'])
+
+    # Compute log_moneyness if spot_prices provided
+    if spot_prices is not None and 'log_moneyness' not in iv_df.columns:
+        if not isinstance(spot_prices.index, pd.DatetimeIndex):
+            spot_prices = spot_prices.copy()
+            spot_prices.index = pd.to_datetime(spot_prices.index)
+        
+        # For each row, get the spot price on that date for the constituent ticker
+        def calc_log_moneyness(row):
+            date = row['date']
+            ticker = row['ticker']
+            strike = row['strike_price']
+            if ticker in spot_prices.columns and date in spot_prices.index:
+                spot = spot_prices.loc[date, ticker]
+                if pd.notna(spot) and spot > 0 and strike > 0:
+                    return np.log(strike / spot)
+            return np.nan
+        
+        iv_df['log_moneyness'] = iv_df.apply(calc_log_moneyness, axis=1)
+
+    return iv_df
 
 
 def compute_all_etfs(
@@ -318,6 +340,32 @@ def compute_all_etfs(
         returns_raw = pd.read_csv(returns_path)
         returns_matrix = _prepare_returns_matrix(returns_raw, mapping_df)
 
+        # Extract spot prices from returns data (prc column) for log_moneyness calculation
+        spot_prices = None
+        if 'prc' in returns_raw.columns:
+            returns_raw_cols = [c.strip().lower() for c in returns_raw.columns]
+            prc_idx = returns_raw.columns.tolist()[returns_raw_cols.index('prc')]
+            date_idx = returns_raw.columns.tolist()[returns_raw_cols.index('date')]
+            ticker_idx = returns_raw.columns.tolist()[returns_raw_cols.index('ticker')] if 'ticker' in returns_raw_cols else 'permno'
+            
+            # Need to ensure ticker column exists
+            if 'ticker' not in returns_raw_cols and 'permno' in returns_raw_cols and not mapping_df.empty:
+                returns_raw = returns_raw.merge(
+                    mapping_df[['ticker', 'permno']].dropna().drop_duplicates(),
+                    on='permno',
+                    how='left',
+                )
+                ticker_idx = 'ticker'
+            
+            spot_prices = returns_raw.pivot_table(
+                index=date_idx, 
+                columns=ticker_idx, 
+                values=prc_idx, 
+                aggfunc='first'
+            )
+            spot_prices.index = pd.to_datetime(spot_prices.index)
+            spot_prices = spot_prices.sort_index()
+
         corr_estimator = CorrelationEstimator(
             etf_name=etf_ticker,
             window=config.ROLLING_CORR_WINDOW,
@@ -327,7 +375,7 @@ def compute_all_etfs(
 
         iv_path = Path(iv_data_dir) / f"raw_constituent_iv_{etf_ticker}.csv"
         iv_raw = pd.read_csv(iv_path)
-        iv_data = _prepare_constituent_iv(iv_raw, mapping_df)
+        iv_data = _prepare_constituent_iv(iv_raw, mapping_df, spot_prices)
 
         calculator = BasketVolatilityCalculator(etf_ticker)
         calculator.load_weights(weights)
