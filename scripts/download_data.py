@@ -58,6 +58,13 @@ def main():
             secid_map = crosswalk.get_secid_map(constituent_tickers)
             constituent_secids = secid_map["secid"].tolist()
 
+            constituent_mapping = (
+                holdings[etf_ticker][["ticker"]]
+                .merge(permno_map, on="ticker", how="left")
+                .merge(secid_map, on="ticker", how="left")
+            )
+            crosswalk.save_mapping(constituent_mapping, etf_ticker, config.RAW_DIR)
+
             returns_puller = ConstituentReturnsPuller(conn, permno_list)
             constituent_returns = returns_puller.pull()
             if not constituent_returns.empty:

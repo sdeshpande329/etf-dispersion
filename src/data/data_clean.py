@@ -7,8 +7,6 @@ from config.config import Config
 class DataCleaner:
     """Merges and cleans options, spot, and rate data for ETFs."""
 
-    ATM_THRESHOLD = 0.025  # |log_moneyness| < 0.025 is considered ATM
-
     def __init__(self):
         self.config = Config()
 
@@ -75,7 +73,7 @@ class DataCleaner:
 
     def filter_atm(self, df: pd.DataFrame) -> pd.DataFrame:
         """Filters to ATM options only, defined as |log_moneyness| < ATM_THRESHOLD. Used to construct the primary implied correlation spread signal."""
-        atm = df[df["log_moneyness"].abs() < self.ATM_THRESHOLD].copy()
+        atm = df[df["log_moneyness"].abs() < self.config.ATM_THRESHOLD].copy()
         return atm.reset_index(drop=True)
 
     def clean(self, options_df: pd.DataFrame, spot_df: pd.DataFrame, rate_df: pd.DataFrame, atm_only: bool = False) -> pd.DataFrame:

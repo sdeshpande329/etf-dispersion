@@ -25,6 +25,9 @@ etf-dispersion
 │   │   ├── clean_etf_options_atm.csv
 │   │   └── clean_etf_options_full.csv
 │   └── raw                                             # Raw data of ETFs, constituents, and markets
+│       ├── raw_constituent_mapping_SPY.csv
+│       ├── raw_constituent_mapping_XBI.csv
+│       ├── raw_constituent_mapping_XLK.csv
 │       ├── raw_constituent_iv_SPY.csv
 │       ├── raw_constituent_iv_XBI.csv
 │       ├── raw_constituent_iv_XLK.csv

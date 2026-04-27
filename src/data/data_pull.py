@@ -324,3 +324,14 @@ class TickerToPermnoCrosswalk:
               .reset_index(drop=True)
         )
         return df
+
+    def save_mapping(
+        self,
+        mapping_df: pd.DataFrame,
+        etf_ticker: str,
+        output_dir: str = "data/raw",
+    ) -> None:
+        """Persist the constituent ticker-to-id mapping used by downstream models."""
+        path = Path(output_dir) / f"raw_constituent_mapping_{etf_ticker}.csv"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        mapping_df.to_csv(path, index=False)

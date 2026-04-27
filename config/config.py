@@ -49,7 +49,8 @@ class Config:
 
     # Log-moneyness filter: ln(strike/spot) in [-LOG_MONEYNESS_BAND, +LOG_MONEYNESS_BAND]
     LOG_MONEYNESS_BAND = 0.15
-
+    ATM_THRESHOLD = 0.025  # |log_moneyness| < 0.025 is considered ATM
+    
     ROLLING_CORR_WINDOW = 60       # Days for rolling historical correlation
 
     SIGNAL_ROLLING_MEAN_WINDOW = 60   # Rolling mean window for spread z-score
