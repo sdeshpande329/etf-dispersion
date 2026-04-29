@@ -114,20 +114,20 @@ class Backtester:
                 ]
             )
 
-            # Overall metrics
-            active = grp[grp["in_position"]]
-            sharpe_net = self._sharpe(active["daily_pnl_net"], rf_daily) if len(active) > 1 else 0.0
+            # Sharpe over ALL calendar days (zero PnL on inactive days)
+            # This avoids inflating Sharpe by conditioning on active-only days
+            all_pnl = grp["daily_pnl_net"]  # includes 0 on inactive days
+            sharpe_net = self._sharpe(all_pnl, rf_daily) if len(all_pnl) > 1 else 0.0
             mdd_net = self._max_drawdown(grp["cum_pnl_net"])
 
-            # Regime splits
+            active = grp[grp["in_position"]]
+
+            # Regime splits (also over all days in each period)
             grp_2022 = grp[grp["date"].dt.year == 2022]
             grp_2324 = grp[grp["date"].dt.year >= 2023]
 
-            active_2022 = grp_2022[grp_2022["in_position"]]
-            active_2324 = grp_2324[grp_2324["in_position"]]
-
-            sharpe_2022 = self._sharpe(active_2022["daily_pnl_net"], rf_daily) if len(active_2022) > 1 else np.nan
-            sharpe_2324 = self._sharpe(active_2324["daily_pnl_net"], rf_daily) if len(active_2324) > 1 else np.nan
+            sharpe_2022 = self._sharpe(grp_2022["daily_pnl_net"], rf_daily) if len(grp_2022) > 1 else np.nan
+            sharpe_2324 = self._sharpe(grp_2324["daily_pnl_net"], rf_daily) if len(grp_2324) > 1 else np.nan
 
             n_trades = int((grp["action"] == "entry").sum()) if "action" in grp.columns else 0
 
