@@ -54,8 +54,8 @@ class Config:
     ROLLING_CORR_WINDOW = 60       # Days for rolling historical correlation
 
     SIGNAL_ROLLING_MEAN_WINDOW = 60   # Rolling mean window for spread z-score
-    SIGNAL_ENTRY_ZSCORE = 1.0         # Enter when spread > mean + 1 std
-    SIGNAL_EXIT_ZSCORE = 0.0          # Exit when spread reverts to mean
+    SIGNAL_ENTRY_ZSCORE = 0.50        # Enter when spread > mean + 0.50 std
+    SIGNAL_EXIT_ZSCORE = -0.25        # Exit when spread overshoots below mean
 
     RAW_DIR = "data/raw"
     PROCESSED_DIR = "data/processed"
