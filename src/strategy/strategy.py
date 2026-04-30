@@ -1,30 +1,3 @@
-"""
-strategy.py
-
-Responsible for translating entry and exit signals into concrete option positions
-and managing the daily delta hedge.
-
-Inputs:
-    - Entry and exit signal flags from signal.py
-    - ETF and constituent option data including greeks from data/processed/
-    - ETF and constituent spot prices from data/processed/
-    - Constituent weights from holdings_loader.py
-
-Outputs:
-    - Daily position log with option legs, delta hedge quantities, and trade costs
-
-Implementation notes:
-    - On entry signal: record a short ETF straddle position and long constituent
-      straddle positions weighted by w_i
-    - On exit signal: close all open legs of the position
-    - Compute daily delta of each position using greeks (delta field) from OptionMetrics
-    - Rebalance delta hedge daily using current spot prices
-    - Deduct transaction costs on entry and exit using the bid-ask spread from
-      OptionMetrics best_bid and best_offer fields
-    - Position sizing should be consistent across ETFs to allow fair performance
-      comparison in backtest.py
-"""
-
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -34,11 +7,7 @@ from src.data.holdings_loader import HoldingsLoader
 
 
 class DispersionStrategy:
-    """
-    Simulates a full dispersion trade: short ETF straddle + long weighted
-    constituent straddles.  Both legs are marked-to-market daily with
-    realistic per-name transaction costs on entry and exit.
-    """
+    """Simulates a full dispersion trade: short ETF straddle + long weighted constituent straddles.  Both legs are marked-to-market daily with realistic per-name transaction costs on entry and exit."""
 
     NOTIONAL = 100_000  # consistent notional per trade for cross-ETF comparison
 
@@ -46,9 +15,6 @@ class DispersionStrategy:
         self.config = Config()
         self.position_log: Optional[pd.DataFrame] = None
 
-    # ------------------------------------------------------------------ #
-    # helpers
-    # ------------------------------------------------------------------ #
     @staticmethod
     def _best_atm_option(options: pd.DataFrame, cp_flag: str) -> Optional[pd.Series]:
         """Pick the ATM option closest to log_moneyness = 0."""
@@ -64,7 +30,6 @@ class DispersionStrategy:
         subset = options[options["cp_flag"] == cp_flag].copy()
         if subset.empty:
             return None
-        # constituent IV data doesn't have log_moneyness; use |delta| closest to 0.5
         subset = subset.copy()
         subset["atm_dist"] = (subset["delta"].abs() - 0.5).abs()
         idx = subset["atm_dist"].idxmin()
@@ -75,16 +40,8 @@ class DispersionStrategy:
         """Half the bid-ask spread — the one-way transaction cost."""
         return (row["best_offer"] - row["best_bid"]) / 2.0
 
-    # ------------------------------------------------------------------ #
-    # constituent data loading
-    # ------------------------------------------------------------------ #
-    def _load_constituent_chains(
-        self, etf_ticker: str, constituent_iv_dir: str, mapping: pd.DataFrame
-    ) -> pd.DataFrame:
-        """
-        Load constituent option chains with ticker labels and mid prices.
-        Filter to 30-60 DTE for consistency with ETF leg.
-        """
+    def _load_constituent_chains(self, etf_ticker: str, constituent_iv_dir: str, mapping: pd.DataFrame) -> pd.DataFrame:
+        """Load constituent option chains with ticker labels and mid prices. Filter to 30-60 DTE for consistency with ETF leg."""
         iv_path = Path(constituent_iv_dir) / f"raw_constituent_iv_{etf_ticker}.csv"
         if not iv_path.exists():
             return pd.DataFrame()
@@ -92,7 +49,6 @@ class DispersionStrategy:
         df = pd.read_csv(iv_path, parse_dates=["date", "exdate"])
         df.columns = [c.strip().lower() for c in df.columns]
 
-        # merge ticker from mapping
         if "ticker" not in df.columns and not mapping.empty:
             df = df.merge(
                 mapping[["ticker", "secid"]].dropna().drop_duplicates(),
@@ -102,7 +58,6 @@ class DispersionStrategy:
         df = df.dropna(subset=["ticker"])
         df["ticker"] = df["ticker"].astype(str).str.strip().str.upper()
 
-        # compute DTE and filter
         df["days_to_expiry"] = (df["exdate"] - df["date"]).dt.days
         df = df[
             (df["days_to_expiry"] >= self.config.DAYS_TO_EXPIRY_MIN)
@@ -114,18 +69,8 @@ class DispersionStrategy:
 
         return df
 
-    # ------------------------------------------------------------------ #
-    # main pipeline
-    # ------------------------------------------------------------------ #
-    def run(
-        self,
-        signals: pd.DataFrame,
-        etf_options_path: str = "data/processed/clean_etf_options_full.csv",
-        constituent_iv_dir: str = "data/raw",
-    ) -> "DispersionStrategy":
-        """
-        Walk through dates for each ETF, open/close positions based on
-        signals, and record daily P&L and costs.
+    def run(self, signals: pd.DataFrame, etf_options_path: str = "data/processed/clean_etf_options_full.csv", constituent_iv_dir: str = "data/raw") -> "DispersionStrategy":
+        """Walk through dates for each ETF, open/close positions based on signals, and record daily P&L and costs.
 
         Both legs of the dispersion trade are simulated:
         - Short ETF ATM straddle
@@ -152,7 +97,6 @@ class DispersionStrategy:
 
             etf_chain = etf_opts[etf_opts["secid"] == etf_secid].copy()
 
-            # load constituent weights and options
             weights = all_holdings[etf_ticker].set_index("ticker")["weight"]
 
             mapping_path = Path(constituent_iv_dir) / f"raw_constituent_mapping_{etf_ticker}.csv"
@@ -174,30 +118,19 @@ class DispersionStrategy:
         self.position_log = pd.DataFrame(all_records)
         return self
 
-    # ------------------------------------------------------------------ #
-    def _simulate_etf(
-        self,
-        etf_ticker: str,
-        etf_signals: pd.DataFrame,
-        etf_chain: pd.DataFrame,
-        weights: pd.Series,
-        constituent_chain: pd.DataFrame,
-    ) -> list[dict]:
-        """
-        Walk day-by-day for one ETF, managing position state.
+    def _simulate_etf(self, etf_ticker: str, etf_signals: pd.DataFrame, etf_chain: pd.DataFrame, weights: pd.Series, constituent_chain: pd.DataFrame) -> list[dict]:
+        """Walk day-by-day for one ETF, managing position state.
 
         The position is:
           - Short 1 ETF ATM straddle  (short call + short put)
           - Long w_i constituent ATM straddles for each constituent i
 
-        Both legs are marked-to-market daily. Transaction costs are charged
-        per-name on the constituent leg at entry and exit.
+        Both legs are marked-to-market daily. Transaction costs are charged per-name on the constituent leg at entry and exit.
         """
         has_constituents = not constituent_chain.empty
         records: list[dict] = []
         in_position = False
 
-        # ETF leg state
         prev_etf_straddle: float = 0.0
         entry_spot: float = 0.0  # fixed at entry for position sizing
         position_scale: float = 0.0  # N / S_entry, fixed at entry
@@ -212,7 +145,6 @@ class DispersionStrategy:
             sig_row = etf_signals[etf_signals["date"] == date].iloc[0]
             day_etf_chain = etf_chain[etf_chain["date"] == date]
 
-            # --- ETF leg ---
             call = self._best_atm_option(day_etf_chain, "C")
             put = self._best_atm_option(day_etf_chain, "P")
             if call is None or put is None:
@@ -225,7 +157,6 @@ class DispersionStrategy:
             # net delta of short ETF straddle
             etf_net_delta = -(float(call["delta"]) + float(put["delta"]))
 
-            # --- Constituent leg (current day) ---
             day_const_chain = pd.DataFrame()
             if has_constituents:
                 day_const_chain = constituent_chain[constituent_chain["date"] == date]
@@ -247,18 +178,15 @@ class DispersionStrategy:
                     constituent_spread_costs[ticker_c] = self._half_spread(c_call) + self._half_spread(c_put)
                     constituent_deltas[ticker_c] = float(c_call["delta"]) + float(c_put["delta"])
 
-            # --- daily hedge cost (1 bp market impact on ETF shares) ---
             hedge_shares = etf_net_delta * position_scale if in_position else 0.0
             hedge_cost = abs(hedge_shares) * spot * 0.0001
 
-            # --- actions ---
             etf_pnl = 0.0
             constituent_pnl = 0.0
             txn_cost = 0.0
             action = "hold"
 
             if not in_position and sig_row["entry_signal"] == 1:
-                # ---- ENTRY ----
                 in_position = True
                 entry_spot = spot
                 position_scale = self.NOTIONAL / entry_spot  # fixed for this trade
@@ -267,10 +195,8 @@ class DispersionStrategy:
                 prev_constituent_straddles = {}
                 constituent_weights_active = {}
 
-                # ETF leg transaction cost
                 txn_cost = etf_spread_cost * position_scale
 
-                # Constituent leg transaction costs (per-name)
                 for ticker_c, w_c in weights.items():
                     if ticker_c in constituent_straddles:
                         prev_constituent_straddles[ticker_c] = constituent_straddles[ticker_c]
@@ -280,7 +206,6 @@ class DispersionStrategy:
                 action = "entry"
 
             elif in_position and sig_row["exit_signal"] == 1:
-                # ---- EXIT ----
                 # ETF leg P&L (short straddle: profit when price drops)
                 etf_pnl = (prev_etf_straddle - etf_straddle_mid) * position_scale
 
@@ -301,7 +226,6 @@ class DispersionStrategy:
                 action = "exit"
 
             elif in_position:
-                # ---- HOLD: mark-to-market ----
                 # ETF leg
                 etf_pnl = (prev_etf_straddle - etf_straddle_mid) * position_scale
                 prev_etf_straddle = etf_straddle_mid
@@ -347,9 +271,6 @@ class DispersionStrategy:
 
         return records
 
-    # ------------------------------------------------------------------ #
-    # outputs
-    # ------------------------------------------------------------------ #
     def get_position_log(self) -> pd.DataFrame:
         if self.position_log is None:
             raise RuntimeError("Call run() first.")
@@ -361,4 +282,3 @@ class DispersionStrategy:
         out = Path(filepath)
         out.parent.mkdir(parents=True, exist_ok=True)
         self.position_log.to_csv(out, index=False)
-        print(f"  Position log saved to {out}")

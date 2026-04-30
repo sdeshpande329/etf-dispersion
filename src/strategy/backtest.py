@@ -1,20 +1,3 @@
-"""
-backtest.py
-
-Responsible for computing strategy performance metrics from the position log
-produced by strategy.py.
-
-Inputs:
-    - Daily position log from strategy.py
-    - ETF and constituent option prices from data/processed/
-    - Risk-free rates
-
-Outputs:
-    - Cumulative PnL time series per ETF
-    - Performance metrics: Sharpe ratio, max drawdown, net PnL after costs
-    - Cross-ETF summary table for comparison across liquidity tiers
-"""
-
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -23,11 +6,7 @@ from config.config import Config
 
 
 class Backtester:
-    """
-    Takes the position log from DispersionStrategy and computes
-    performance analytics: cumulative PnL, Sharpe, drawdown, and
-    a cross-ETF comparison table.
-    """
+    """Takes the position log from DispersionStrategy and computes performance analytics: cumulative PnL, Sharpe, drawdown, and a cross-ETF comparison table."""
 
     TRADING_DAYS_PER_YEAR = 252
 
@@ -36,9 +15,6 @@ class Backtester:
         self.pnl_series: Optional[pd.DataFrame] = None
         self.summary: Optional[pd.DataFrame] = None
 
-    # ------------------------------------------------------------------ #
-    # core analytics
-    # ------------------------------------------------------------------ #
     @staticmethod
     def _sharpe(daily_pnl: pd.Series, rf_daily: float = 0.0) -> float:
         """Annualised Sharpe ratio from a daily PnL series."""
@@ -64,24 +40,8 @@ class Backtester:
         avg_annual = rates["rate"].mean() / 100.0  # rates stored as pct
         return avg_annual / 252
 
-    # ------------------------------------------------------------------ #
-    # run
-    # ------------------------------------------------------------------ #
-    def run(
-        self,
-        position_log: pd.DataFrame,
-        rates_path: str = "data/raw/raw_rates.csv",
-    ) -> "Backtester":
-        """
-        Compute cumulative PnL and summary statistics from the position
-        log produced by DispersionStrategy.
-
-        Parameters
-        ----------
-        position_log : DataFrame with columns ticker, date, daily_pnl_net,
-                       daily_pnl_gross, txn_cost, spread, in_position
-        rates_path : path to risk-free rates CSV
-        """
+    def run(self, position_log: pd.DataFrame, rates_path: str = "data/raw/raw_rates.csv") -> "Backtester":
+        """Compute cumulative PnL and summary statistics from the position log produced by DispersionStrategy."""
         rf_daily = self._avg_rf_daily(rates_path)
 
         pnl_frames = []
@@ -114,15 +74,12 @@ class Backtester:
                 ]
             )
 
-            # Sharpe over ALL calendar days (zero PnL on inactive days)
-            # This avoids inflating Sharpe by conditioning on active-only days
             all_pnl = grp["daily_pnl_net"]  # includes 0 on inactive days
             sharpe_net = self._sharpe(all_pnl, rf_daily) if len(all_pnl) > 1 else 0.0
             mdd_net = self._max_drawdown(grp["cum_pnl_net"])
 
             active = grp[grp["in_position"]]
 
-            # Regime splits (also over all days in each period)
             grp_2022 = grp[grp["date"].dt.year == 2022]
             grp_2324 = grp[grp["date"].dt.year >= 2023]
 
@@ -153,9 +110,6 @@ class Backtester:
         self.summary = pd.DataFrame(summary_rows)
         return self
 
-    # ------------------------------------------------------------------ #
-    # outputs
-    # ------------------------------------------------------------------ #
     def get_pnl_series(self) -> pd.DataFrame:
         if self.pnl_series is None:
             raise RuntimeError("Call run() first.")
@@ -170,9 +124,7 @@ class Backtester:
         """Pretty-print the cross-ETF summary table."""
         if self.summary is None:
             raise RuntimeError("Call run() first.")
-        print("\n" + "=" * 80)
         print("DISPERSION STRATEGY — CROSS-ETF PERFORMANCE SUMMARY")
-        print("=" * 80)
         display_cols = [
             "ticker",
             "liquidity_tier",
@@ -187,17 +139,11 @@ class Backtester:
         ]
         cols = [c for c in display_cols if c in self.summary.columns]
         print(self.summary[cols].to_string(index=False, float_format="{:.4f}".format))
-        print("=" * 80 + "\n")
-
-    def save(
-        self,
-        pnl_path: str = "data/processed/backtest_pnl.csv",
-        summary_path: str = "data/processed/backtest_summary.csv",
-    ) -> None:
+    
+    def save(self, pnl_path: str = "data/processed/backtest_pnl.csv", summary_path: str = "data/processed/backtest_summary.csv") -> None:
         if self.pnl_series is None:
             raise RuntimeError("Call run() first.")
         for path, df in [(pnl_path, self.pnl_series), (summary_path, self.summary)]:
             out = Path(path)
             out.parent.mkdir(parents=True, exist_ok=True)
             df.to_csv(out, index=False)
-            print(f"  Saved to {out}")

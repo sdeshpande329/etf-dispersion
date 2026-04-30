@@ -1,20 +1,3 @@
-"""
-vol_surface.py
-
-Responsible for constructing and plotting the implied volatility surface for each
-ETF alongside its synthetic basket vol surface and the spread between the two.
-
-Inputs:
-    - ETF implied vols across all strikes and maturities from data/processed/
-    - Synthetic basket vols from basket_vol.py
-    - Log-moneyness values computed during data cleaning
-
-Outputs:
-    - Vol surface plots saved to results/figures/
-    - Three surfaces per ETF: market quoted ETF surface, synthetic basket surface,
-      and spread surface (ETF minus synthetic)
-"""
-
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -32,17 +15,11 @@ MATURITY_BUCKETS = [
 
 
 class VolSurfacePlotter:
-    """
-    Builds and plots implied-volatility surfaces from ETF option data,
-    overlays the synthetic basket vol, and highlights the spread.
-    """
+    """Builds and plots implied-volatility surfaces from ETF option data, overlays the synthetic basket vol, and highlights the spread."""
 
     def __init__(self):
         self.config = Config()
 
-    # ------------------------------------------------------------------ #
-    # data prep
-    # ------------------------------------------------------------------ #
     @staticmethod
     def _bucket_maturity(dte: pd.Series) -> pd.Series:
         """Assign each option to a maturity bucket label."""
@@ -52,29 +29,18 @@ class VolSurfacePlotter:
             labels[mask] = label
         return labels
 
-    def _load_and_prepare(
-        self, options_path: str
-    ) -> pd.DataFrame:
+    def _load_and_prepare(self, options_path: str) -> pd.DataFrame:
         """Load full ETF option chain and add maturity bucket."""
         df = pd.read_csv(options_path, parse_dates=["date"])
         df["maturity_bucket"] = self._bucket_maturity(df["days_to_expiry"])
         df = df.dropna(subset=["maturity_bucket", "impl_volatility"])
         return df
+    
+    def plot_vol_surface(self, options_path: str = "data/processed/clean_etf_options_full.csv", save: bool = True) -> None:
+        """For each ETF, create a 3-D surface plot:
+                x = log-moneyness, y = days-to-expiry, z = implied vol.
 
-    # ------------------------------------------------------------------ #
-    # 1. Vol surface per ETF (3D)
-    # ------------------------------------------------------------------ #
-    def plot_vol_surface(
-        self,
-        options_path: str = "data/processed/clean_etf_options_full.csv",
-        save: bool = True,
-    ) -> None:
-        """
-        For each ETF, create a 3-D surface plot:
-        x = log-moneyness, y = days-to-expiry, z = implied vol.
-
-        Uses a representative snapshot (median date) so the surface is
-        not an average across time.
+        Uses a representative snapshot (median date) so the surface is not an average across time.
         """
         df = self._load_and_prepare(options_path)
         FIGURES_DIR.mkdir(parents=True, exist_ok=True)
@@ -84,7 +50,6 @@ class VolSurfacePlotter:
             if sub.empty:
                 continue
 
-            # pick the date with the most option quotes as the snapshot
             date_counts = sub.groupby("date").size()
             snap_date = date_counts.idxmax()
             snap = sub[sub["date"] == snap_date].copy()
@@ -114,26 +79,14 @@ class VolSurfacePlotter:
                 )
             plt.close(fig)
 
-        print(f"  Vol surface plots saved to {FIGURES_DIR}/")
-
-    # ------------------------------------------------------------------ #
-    # 2. ATM spread time series (overlay across ETFs)
-    # ------------------------------------------------------------------ #
-    def plot_atm_spread(
-        self,
-        signals_path: str = "data/processed/signals.csv",
-        save: bool = True,
-    ) -> None:
-        """
-        Plot the ATM implied-correlation spread (sigma_ETF - sigma_basket)
-        over time for all ETFs on a single chart.
-        """
+        
+    def plot_atm_spread(self, signals_path: str = "data/processed/signals.csv", save: bool = True) -> None:
+        """Plot the ATM implied-correlation spread (sigma_ETF - sigma_basket) over time for all ETFs on a single chart."""
         signals = pd.read_csv(signals_path, parse_dates=["date"])
         FIGURES_DIR.mkdir(parents=True, exist_ok=True)
 
         fig, axes = plt.subplots(2, 1, figsize=(14, 9), sharex=True)
 
-        # Panel 1: raw spread
         ax1 = axes[0]
         for ticker in self.config.etf_tickers():
             grp = signals[signals["ticker"] == ticker].sort_values("date")
@@ -145,7 +98,6 @@ class VolSurfacePlotter:
         ax1.set_title("ATM Implied-Correlation Spread by ETF")
         ax1.legend()
 
-        # Panel 2: z-score with entry/exit bands
         ax2 = axes[1]
         for ticker in self.config.etf_tickers():
             grp = signals[signals["ticker"] == ticker].sort_values("date")
@@ -179,19 +131,9 @@ class VolSurfacePlotter:
                 bbox_inches="tight",
             )
         plt.close(fig)
-        print(f"  ATM spread plot saved to {FIGURES_DIR}/atm_spread_timeseries.png")
 
-    # ------------------------------------------------------------------ #
-    # 3. Cumulative PnL comparison
-    # ------------------------------------------------------------------ #
-    def plot_cumulative_pnl(
-        self,
-        pnl_path: str = "data/processed/backtest_pnl.csv",
-        save: bool = True,
-    ) -> None:
-        """
-        Plot cumulative net PnL for each ETF side by side.
-        """
+    def plot_cumulative_pnl(self, pnl_path: str = "data/processed/backtest_pnl.csv", save: bool = True) -> None:
+        """Plot cumulative net PnL for each ETF side by side."""
         pnl = pd.read_csv(pnl_path, parse_dates=["date"])
         FIGURES_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -223,17 +165,8 @@ class VolSurfacePlotter:
                 FIGURES_DIR / "cumulative_pnl.png", dpi=150, bbox_inches="tight"
             )
         plt.close(fig)
-        print(f"  Cumulative PnL plot saved to {FIGURES_DIR}/cumulative_pnl.png")
 
-    # ------------------------------------------------------------------ #
-    # convenience
-    # ------------------------------------------------------------------ #
-    def plot_all(
-        self,
-        options_path: str = "data/processed/clean_etf_options_full.csv",
-        signals_path: str = "data/processed/signals.csv",
-        pnl_path: str = "data/processed/backtest_pnl.csv",
-    ) -> None:
+    def plot_all(self, options_path: str = "data/processed/clean_etf_options_full.csv", signals_path: str = "data/processed/signals.csv", pnl_path: str = "data/processed/backtest_pnl.csv") -> None:
         """Generate all plots in one call."""
         self.plot_vol_surface(options_path)
         self.plot_atm_spread(signals_path)

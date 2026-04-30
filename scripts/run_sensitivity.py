@@ -1,14 +1,3 @@
-"""
-run_sensitivity.py
-
-Sweep entry/exit z-score thresholds and report Sharpe, PnL, trade count,
-and max drawdown for each ETF × parameter combination.
-
-Outputs:
-    - data/processed/sensitivity_table.csv
-    - Prints a formatted table to stdout
-"""
-
 import sys
 from pathlib import Path
 from itertools import product
@@ -73,17 +62,14 @@ def main():
     df = pd.DataFrame(rows)
     out = Path("data/processed/sensitivity_table.csv")
     df.to_csv(out, index=False)
-    print(f"\nSaved to {out}\n")
-
+    
     # Pretty-print pivot: Sharpe by (entry_z, exit_z) for each ETF
     for ticker in df["ticker"].unique():
         sub = df[df["ticker"] == ticker]
         pivot = sub.pivot_table(
             index="entry_z", columns="exit_z", values="sharpe_net"
         )
-        print(f"\n{'='*50}")
         print(f"  {ticker} — Annualised Sharpe (net)")
-        print(f"{'='*50}")
         print(f"  rows = entry_z, cols = exit_z\n")
         print(pivot.to_string(float_format="{:+.2f}".format))
 
@@ -93,9 +79,7 @@ def main():
         pivot = sub.pivot_table(
             index="entry_z", columns="exit_z", values="n_trades"
         )
-        print(f"\n{'='*50}")
         print(f"  {ticker} — Number of Trades")
-        print(f"{'='*50}")
         print(pivot.to_string(float_format="{:.0f}".format))
 
     print()

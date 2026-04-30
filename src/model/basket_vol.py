@@ -1,18 +1,3 @@
-"""
-basket_vol.py
-
-Responsible for deriving the theoretical implied volatility of each ETF basket
-from its constituent implied volatilities and pairwise correlations.
-
-Inputs:
-    - Constituent ATM implied vols from OptionMetrics (loaded from data/raw/)
-    - Constituent weights from holdings_loader.py
-    - Rolling correlation matrices from correlation.py
-
-Outputs:
-    - Daily time series of sigma_basket per ETF
-"""
-
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -23,31 +8,20 @@ from src.model.correlation import CorrelationEstimator
 
 
 class BasketVolatilityCalculator:
-    """
-    Computes the theoretical implied volatility of an ETF basket using
-    constituent implied vols, weights, and pairwise correlations.
-    """
+    """Computes the theoretical implied volatility of an ETF basket using constituent implied vols, weights, and pairwise correlations."""
     
     def __init__(self, etf_ticker: str):
-        """
-        Initialize the calculator for a specific ETF.
-        """
         self.etf_ticker = etf_ticker
         self.config = Config()
         
-        # Data containers - these will be populated by load_* methods
         self.constituent_iv: Optional[pd.DataFrame] = None
         self.weights: Optional[pd.Series] = None
         self.correlation_estimator = None
         
-        # Output container
         self.sigma_basket_df: Optional[pd.DataFrame] = None
     
-    # Data Loading
     def load_constituent_iv(self, iv_data: pd.DataFrame) -> "BasketVolatilityCalculator":
-        """
-        Load constituent implied volatility data.
-        """
+        """Load constituent implied volatility data."""
         required_cols = {'date', 'exdate', 'strike_price', 'impl_volatility', 'log_moneyness'}
         missing_cols = required_cols - set(iv_data.columns)
         if missing_cols:
@@ -59,7 +33,6 @@ class BasketVolatilityCalculator:
         if 'days_to_expiry' not in iv_data.columns:
             iv_data['days_to_expiry'] = (iv_data['exdate'] - iv_data['date']).dt.days
 
-        # Make sure options are At the Money and within the expiry window to get best imp vol estimate
         self.constituent_iv = iv_data[
             (iv_data['log_moneyness'].abs() < self.config.ATM_THRESHOLD) &
             (iv_data['days_to_expiry'] >= self.config.DAYS_TO_EXPIRY_MIN) &
@@ -68,11 +41,8 @@ class BasketVolatilityCalculator:
         return self
     
     def load_weights(self, weights: pd.Series) -> "BasketVolatilityCalculator":
-        """
-        Load constituent weights from holdings data.
-        """
+        """Load constituent weights from holdings data."""
         
-        # Validate that weights sum to 1 
         TOL = 0.01
         total_weight = weights.sum()
         if abs(1 - total_weight) > TOL:
@@ -82,9 +52,7 @@ class BasketVolatilityCalculator:
         return self
     
     def load_correlation_estimator(self, corr_estimator) -> "BasketVolatilityCalculator":
-        """
-        Load a pre-fitted CorrelationEstimator
-        """
+        """Load a pre-fitted CorrelationEstimator"""
 
         if not hasattr(corr_estimator, 'get_tickers') or not hasattr(corr_estimator, 'get_all_matrices'):
             raise ValueError("CorrelationEstimator must have estimate() called before loading.")
@@ -107,9 +75,7 @@ class BasketVolatilityCalculator:
         return self
     
     def _get_atm_vol(self, date: pd.Timestamp, constituent_ticker: str) -> Optional[float]:
-        """
-        Get the ATM implied volatility for a specific constituent on a given date.
-        """
+        """Get the ATM implied volatility for a specific constituent on a given date."""
         if 'ticker' not in self.constituent_iv.columns:
             raise ValueError("constituent_iv must include a 'ticker' column.")
 
@@ -123,23 +89,13 @@ class BasketVolatilityCalculator:
         atm_idx = iv_slice['log_moneyness'].abs().idxmin()
         return float(iv_slice.at[atm_idx, 'impl_volatility'])
     
-    def _compute_basket_variance(
-        self, 
-        date: pd.Timestamp, 
-        weights: np.ndarray, 
-        vols: np.ndarray, 
-        corr_matrix: np.ndarray
-    ) -> float:
-        """
-        Compute basket variance using the full correlation matrix.
-        """
+    def _compute_basket_variance(self, date: pd.Timestamp, weights: np.ndarray, vols: np.ndarray, corr_matrix: np.ndarray) -> float:
+        """Compute basket variance using the full correlation matrix."""
         weighted_vols = weights * vols
         return float(weighted_vols @ corr_matrix @ weighted_vols)
     
     def compute(self) -> "BasketVolatilityCalculator":
-        """
-        Run the full basket volatility computation for all dates.
-        """
+        """Run the full basket volatility computation for all dates."""
         if self.constituent_iv is None:
             raise RuntimeError("Call load_constituent_iv() before compute().")
         if self.weights is None:
@@ -196,19 +152,14 @@ class BasketVolatilityCalculator:
         self.sigma_basket_df = pd.DataFrame.from_records(records)
         return self
     
-    # Outputs and Saving
     def get_sigma_basket(self) -> pd.DataFrame:
-        """
-        Get the computed sigma_basket time series.
-        """
+        """Get the computed sigma_basket time series."""
         if self.sigma_basket_df is None:
             raise RuntimeError("Call compute() before getting results.")
         return self.sigma_basket_df
     
     def save(self, filepath: Optional[str] = None) -> None:
-        """
-        Save the sigma_basket results to CSV.
-        """
+        """Save the sigma_basket results to CSV."""
         if self.sigma_basket_df is None:
             raise RuntimeError("No results to save. Call compute() first.")
 
@@ -220,9 +171,7 @@ class BasketVolatilityCalculator:
 
 
 def _load_constituent_mapping(etf_ticker: str, search_dirs: list[str]) -> pd.DataFrame:
-    """
-    Load an optional constituent mapping CSV with columns including ticker and permno/secid.
-    """
+    """Load an optional constituent mapping CSV with columns including ticker and permno/secid."""
     for directory in search_dirs:
         for filename in (
             f"raw_constituent_mapping_{etf_ticker}.csv",
@@ -240,9 +189,7 @@ def _load_constituent_mapping(etf_ticker: str, search_dirs: list[str]) -> pd.Dat
 
 
 def _prepare_returns_matrix(returns_df: pd.DataFrame, mapping_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Normalize returns into a wide date x ticker matrix.
-    """
+    """Normalize returns into a wide date x ticker matrix."""
     returns_df = returns_df.copy()
     returns_df.columns = [col.strip().lower() for col in returns_df.columns]
     returns_df['date'] = pd.to_datetime(returns_df['date'])
@@ -264,10 +211,7 @@ def _prepare_returns_matrix(returns_df: pd.DataFrame, mapping_df: pd.DataFrame) 
 
 
 def _prepare_constituent_iv(iv_df: pd.DataFrame, mapping_df: pd.DataFrame, spot_prices: Optional[pd.DataFrame] = None) -> pd.DataFrame:
-    """
-    Normalize constituent IV data to include ticker labels.
-    Optionally compute log_moneyness from spot prices.
-    """
+    """Normalize constituent IV data to include ticker labels. Optionally compute log_moneyness from spot prices."""
     iv_df = iv_df.copy()
     iv_df.columns = [col.strip().lower() for col in iv_df.columns]
     iv_df['date'] = pd.to_datetime(iv_df['date'])
@@ -288,13 +232,11 @@ def _prepare_constituent_iv(iv_df: pd.DataFrame, mapping_df: pd.DataFrame, spot_
     iv_df['ticker'] = iv_df['ticker'].astype(str).str.strip().str.upper()
     iv_df = iv_df.dropna(subset=['ticker'])
 
-    # Compute log_moneyness if spot_prices provided
     if spot_prices is not None and 'log_moneyness' not in iv_df.columns:
         if not isinstance(spot_prices.index, pd.DatetimeIndex):
             spot_prices = spot_prices.copy()
             spot_prices.index = pd.to_datetime(spot_prices.index)
         
-        # For each row, get the spot price on that date for the constituent ticker
         def calc_log_moneyness(row):
             date = row['date']
             ticker = row['ticker']
@@ -310,21 +252,8 @@ def _prepare_constituent_iv(iv_df: pd.DataFrame, mapping_df: pd.DataFrame, spot_
     return iv_df
 
 
-def compute_all_etfs(
-    iv_data_dir: str = "data/raw",
-    weights_dir: str = "data/holdings",
-    output_dir: str = "data/processed"
-) -> dict:
-    """
-    Compute basket volatility for all ETFs in the universe.
-    
-    This is a convenience function that:
-    1. Load holdings for each ETF
-    2. Load the saved constituent ticker-to-id mapping
-    3. Load correlation estimator for each ETF
-    4. Compute sigma_basket for each ETF
-    5. Save results to CSV
-    """
+def compute_all_etfs(iv_data_dir: str = "data/raw", weights_dir: str = "data/holdings", output_dir: str = "data/processed") -> dict:
+    """Compute basket volatility for all ETFs in the universe."""
     config = Config()
     holdings_loader = HoldingsLoader()
     holdings_loader.holdings_dir = Path(weights_dir)
